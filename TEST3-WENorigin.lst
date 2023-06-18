@@ -1,0 +1,234 @@
+Microsoft (R) Macro Assembler Version 6.11		    06/14/23 21:13:15
+tempfile.asm						     Page 1 - 1
+
+
+
+ 0000				DATAS SEGMENT
+ 0000 1E			BUF DB 30
+ 0001  00			    DB ?
+ 0002  001E [			    DB 30 DUP(?)       ;用来存储发送信息的缓冲区
+        00
+       ]
+ 0020 73 65 74 20 42 44		MESG1 DB 'set BD$' 
+       24
+ 0027 77 72 69 74 65 20		MESG2 DB 'write the number of Divisor register from high to low:$'
+       74 68 65 20 6E 75
+       6D 62 65 72 20 6F
+       66 20 44 69 76 69
+       73 6F 72 20 72 65
+       67 69 73 74 65 72
+       20 66 72 6F 6D 20
+       68 69 67 68 20 74
+       6F 20 6C 6F 77 3A
+       24
+ 005E CA E4 C8 EB B7 A2		MESG4 DB '输入发送内容:'
+       CB CD C4 DA C8 DD
+       3A
+ 006B 02			H DB 2
+ 006C  00			     DB ?
+ 006D  0002 [			     DB 2 DUP(?)
+        00
+       ]
+ 006F 00000000			OLD0B DD ?   ;SUBSTITUTE
+ 0073 00			FLAG DB 0
+ 0074				DATAS ENDS
+
+ 0000				CODES SEGMENT
+				    ASSUME CS:CODES,DS:DATAS
+ 0000				START:
+ 0000  B8 ---- R		    MOV AX,DATAS
+ 0003  8E D8			    MOV DS,AX
+				    
+ 0005  FA			    CLI
+ 0006  E8 0080			    CALL I82501
+				    ;提示语句
+ 0009  B4 09			    MOV AH,9
+ 000B  BA 0020 R		    MOV DX,OFFSET MESG1
+ 000E  CD 21			    INT 21H
+ 0010  B2 0A			    MOV	DL,0AH			;换行
+ 0012  B4 02			    MOV	AH,02H
+ 0014  CD 21			    INT	21H
+ 0016  B4 09			    MOV AH,9
+ 0018  BA 0027 R		    MOV DX,OFFSET MESG2
+ 001B  CD 21			    INT 21H
+				    
+ 001D  B4 0A			    MOV AH,0AH
+ 001F  BA 0000 R		    MOV DX,OFFSET BUF   
+ 0022  CD 21			    INT 21H              ;输入待发送的消息
+ 0024  B4 02			    MOV AH,2
+ 0026  B2 0A			    MOV DL,0AH     
+ 0028  CD 21			    INT 21H  			 ;换行
+				    
+ 002A  B5 00			    MOV CH,0
+ 002C  8A 0E 0001 R		    MOV CL,BUF+1         ;计算长度
+				    
+ 0030  E8 007B			    CALL I8259
+ 0033  E8 007F			    CALL READ0B
+ 0036  E8 008A			    CALL WRITE0B
+ 0039  FB			    STI
+ 003A  BB 0002 R		    MOV BX,OFFSET BUF+2  ;取得首地址
+				     
+ 003D				SCAN: 
+ 003D  BA 02FD			    MOV DX,2FDH
+ 0040  EC			    IN AL,DX
+ 0041  A8 20			    TEST AL,20H          ;检查发送保持寄存器是否为空
+ 0043  74 F8			    JZ SCAN
+				    
+ 0045  BA 02F8			    MOV DX,2F8H
+ 0048  8A 07			    MOV AL,[BX]          ;取字符
+ 004A  EE			    OUT DX,AL		     ;送到数据寄存器
+ 004B  43			    INC BX             
+ 004C  E2 EF			    LOOP SCAN
+
+ 004E  BA 02FD			LAST:MOV DX,2FDH        
+ 0051  EC			     IN AL,DX
+ 0052  A8 40			     TEST AL,40H		 ;检查发送移位寄存器是否为空
+ 0054  74 F8			     JZ LAST             ;确认是否所有字符发送完毕
+
+				    
+ 0056  80 3E 0073 R 01		SCANT: CMP FLAG,1  		 ;测试是否收到结束字符
+ 005B  74 F9			       JZ SCANT
+ 005D  E8 0073			       CALL RESET
+ 0060  B4 4C			       MOV AH,4CH
+ 0062  CD 21			       INT 21H
+				       
+ 0064				RECEIVE PROC
+ 0064  50			        PUSH AX
+ 0065  52			        PUSH DX
+ 0066  1E			        PUSH DS            
+ 0067  B8 ---- R		        MOV AX,DATAS    
+ 006A  8E D8			        MOV DS,AX
+ 006C  BA 02F8			        MOV DX,2F8H   
+ 006F  EC			        IN AL,DX
+ 0070  3C 0D			        CMP AL,0DH           ;看看是否结束
+ 0072  74 08			        JZ NEXT             
+ 0074  B4 02			        MOV AH,2             ;显示收到的字符
+ 0076  8A D0			        MOV DL,AL
+ 0078  CD 21			        INT 21H
+ 007A  EB 05			        JMP EXIT
+ 007C  C6 06 0073 R 01		NEXT:   MOV FLAG,1
+ 0081  B0 20			EXIT:   MOV AL,20H
+ 0083  E6 20			        OUT 20H,AL
+ 0085  1F			        POP DS               
+ 0086  5A			        POP DX
+ 0087  58			        POP AX
+ 0088  CF			        IRET
+ 0089				RECEIVE ENDP
+
+
+ 0089				I82501 PROC              	;8250初始化
+ 0089  BA 02FB			     MOV DX,2FBH
+ 008C  B0 80			     MOV AL,80H
+ 008E  EE			     OUT DX,AL
+				     ;设置波特率
+ 008F  BA 02F9			     MOV DX,2F9H
+ 0092  B0 09			     MOV AL,09H				
+ 0094  EE			     OUT DX,AL				;除数寄存器高8位
+ 0095  BA 02F8			     MOV DX,2F8H
+ 0098  B0 00			     MOV AL,00H
+ 009A  EE			     OUT DX,AL				;除数寄存器低8位
+				     ;设置帧格式
+ 009B  BA 02FB			     MOV DX,2FBH
+ 009E  B0 0B			     MOV AL,0BH;
+ 00A0  EE			     OUT DX,AL
+				     
+ 00A1  BA 02F9			     MOV DX,2F9H
+ 00A4  B0 01			     MOV AL,01H
+ 00A6  EE			     OUT DX,AL				;允许8250内部提出接受中断
+ 00A7  BA 02FC			     MOV DX,2FCH
+ 00AA  B0 18			     MOV AL,00011000B;<==这里，看书上p348;D4=1内环自检,  
+				     ; D3=1开放中断, D4=0正常通信
+ 00AC  EE			     OUT DX,AL
+ 00AD  C3			     RET
+ 00AE				I82501 ENDP
+
+ 00AE				I8259 PROC
+ 00AE  E4 21			     IN AL,21H
+ 00B0  24 F7			     AND AL,11110111B;
+ 00B2  E6 21			     OUT 21H,AL
+ 00B4  C3			     RET
+ 00B5				I8259 ENDP
+
+ 00B5				READ0B PROC
+ 00B5  B8 350B			      MOV AX,350BH
+ 00B8  CD 21			      INT 21H
+ 00BA  89 1E 006F R		      MOV WORD PTR OLD0B,BX
+ 00BE  8C 06 0071 R		      MOV WORD PTR OLD0B+2,ES
+ 00C2  C3			      RET
+ 00C3				READ0B ENDP
+
+ 00C3				WRITE0B PROC
+ 00C3  1E			        PUSH DS
+ 00C4  B8 ---- R		        MOV AX,CODES
+ 00C7  8E D8			        MOV DS,AX
+ 00C9  BA 0064 R		        MOV DX,OFFSET RECEIVE
+ 00CC  B8 250B			        MOV AX,250BH
+ 00CF  CD 21			        INT 21H
+ 00D1  1F			        POP DS
+ 00D2  C3			        RET
+ 00D3				WRITE0B ENDP
+ 00D3				RESET PROC
+ 00D3  E4 21			        IN AL,21H
+ 00D5  0C 08			        OR AL,00001000B
+ 00D7  E6 21			        OUT 21H,AL
+ 00D9  B8 250B			        MOV AX,250BH
+ 00DC  8B 16 006F R		        MOV DX,WORD PTR OLD0B
+ 00E0  8E 1E 0071 R		        MOV DS,WORD PTR OLD0B+2
+ 00E4  CD 21			        INT 21H
+ 00E6  C3			        RET
+ 00E7				RESET ENDP
+ 00E7				CODES ENDS
+				END START
+
+
+
+
+
+
+
+Microsoft (R) Macro Assembler Version 6.11		    06/14/23 21:13:15
+tempfile.asm						     Symbols 2 - 1
+
+
+
+
+Segments and Groups:
+
+                N a m e                 Size     Length   Align   Combine Class
+
+CODES  . . . . . . . . . . . . .	16 Bit	 00E7	  Para	  Private 
+DATAS  . . . . . . . . . . . . .	16 Bit	 0074	  Para	  Private 
+
+
+Procedures,  parameters and locals:
+
+                N a m e                 Type     Value    Attr
+
+I82501 . . . . . . . . . . . . .	P Near	 0089	  CODES	Length= 0025 Public
+I8259  . . . . . . . . . . . . .	P Near	 00AE	  CODES	Length= 0007 Public
+READ0B . . . . . . . . . . . . .	P Near	 00B5	  CODES	Length= 000E Public
+RECEIVE  . . . . . . . . . . . .	P Near	 0064	  CODES	Length= 0025 Public
+  NEXT . . . . . . . . . . . . .	L Near	 007C	  CODES	
+  EXIT . . . . . . . . . . . . .	L Near	 0081	  CODES	
+RESET  . . . . . . . . . . . . .	P Near	 00D3	  CODES	Length= 0014 Public
+WRITE0B  . . . . . . . . . . . .	P Near	 00C3	  CODES	Length= 0010 Public
+
+
+Symbols:
+
+                N a m e                 Type     Value    Attr
+
+BUF  . . . . . . . . . . . . . .	Byte	 0000	  DATAS	
+FLAG . . . . . . . . . . . . . .	Byte	 0073	  DATAS	
+H  . . . . . . . . . . . . . . .	Byte	 006B	  DATAS	
+LAST . . . . . . . . . . . . . .	L Near	 004E	  CODES	
+MESG1  . . . . . . . . . . . . .	Byte	 0020	  DATAS	
+MESG2  . . . . . . . . . . . . .	Byte	 0027	  DATAS	
+MESG4  . . . . . . . . . . . . .	Byte	 005E	  DATAS	
+OLD0B  . . . . . . . . . . . . .	DWord	 006F	  DATAS	
+SCANT  . . . . . . . . . . . . .	L Near	 0056	  CODES	
+SCAN . . . . . . . . . . . . . .	L Near	 003D	  CODES	
+START  . . . . . . . . . . . . .	L Near	 0000	  CODES	
+
+	   0 Warnings
+	   0 Errors
